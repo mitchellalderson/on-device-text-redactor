@@ -388,14 +388,15 @@ def benchmark(
 
 @app.local_entrypoint()
 def main(
+    rev_a: str = "main",
+    rev_b: str = "v2-50k",
     samples: int = 100,
     seed: int = 42,
     failures: int = 3,
     output: str = None,
 ):
-    revisions = ["main", "v2-50k"]
     benchmark.remote(
-        revisions=revisions,
+        revisions=[rev_a, rev_b],
         samples=samples,
         seed=seed,
         failures=failures,

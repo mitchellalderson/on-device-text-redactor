@@ -3,7 +3,7 @@ export type StatusCallback = (message: string) => void;
 export type TokenCallback = (token: string) => void;
 
 interface Redactor {
-  init(onStatus?: StatusCallback): Promise<void>;
+  init(onStatus?: StatusCallback, fp16?: boolean): Promise<void>;
   redact(
     text: string,
     onToken?: TokenCallback,
@@ -35,6 +35,8 @@ export class PhiFirewall {
       );
     }
 
+    const fp16 = adapter.features?.has("shader-f16") ?? false;
+
     if (variant === "trained") {
       const { TrainedModel } = await import("./trained-model");
       this.impl = new TrainedModel();
@@ -43,7 +45,7 @@ export class PhiFirewall {
       this.impl = new BaseModel();
     }
 
-    await this.impl.init(onStatus);
+    await this.impl.init(onStatus, fp16);
   }
 
   async redact(

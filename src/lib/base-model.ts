@@ -38,7 +38,7 @@ export class BaseModel {
   private session: ort.InferenceSession | null = null;
   private eosTokenId: number | null = null;
 
-  async init(onStatus?: StatusCallback): Promise<void> {
+  async init(onStatus?: StatusCallback, fp16 = true): Promise<void> {
     onStatus?.("Loading tokenizer...");
     this.tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
     if (!this.tokenizer.chat_template) {

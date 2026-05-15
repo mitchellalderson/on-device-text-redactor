@@ -20,7 +20,6 @@ const CHATML_TEMPLATE = `{% for message in messages %}{% if message.role == 'sys
 
 const MODEL_ID = "aldersondev/phi-firewall-lfm2-350m-onnx";
 const MODEL_REVISION = "v2-50k-kv";
-const MODEL_PATH = "model_fp16.onnx";
 
 const HIDDEN_SIZE = 1024;
 const CONV_L_CACHE = 3;
@@ -36,8 +35,10 @@ export class TrainedModel {
   private tokenizer: PreTrainedTokenizer | null = null;
   private session: ort.InferenceSession | null = null;
   private eosTokenId: number | null = null;
+  private fp16 = true;
 
-  async init(onStatus?: StatusCallback): Promise<void> {
+  async init(onStatus?: StatusCallback, fp16 = true): Promise<void> {
+    this.fp16 = fp16;
     onStatus?.("Loading tokenizer...");
     this.tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID, {
       revision: MODEL_REVISION,
@@ -47,8 +48,9 @@ export class TrainedModel {
     }
     this.eosTokenId = this.tokenizer.eos_token_id;
 
-    onStatus?.("Loading model...");
-    const modelUrl = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/${MODEL_PATH}`;
+    onStatus?.(fp16 ? "Loading model (FP16)..." : "Loading model (FP32)...");
+    const modelFile = fp16 ? "model_fp16.onnx" : "model_fp32.onnx";
+    const modelUrl = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/${modelFile}`;
     const modelBuffer = await fetchWithCache(modelUrl, (msg) =>
       onStatus?.(msg),
     );
@@ -172,22 +174,25 @@ export class TrainedModel {
 
   private initCache(): Record<string, ort.Tensor> {
     const cache: Record<string, ort.Tensor> = {};
+    const dtype = this.fp16 ? "float16" : "float32";
+    const ConvArr = this.fp16 ? Uint16Array : Float32Array;
+    const KvArr = this.fp16 ? Uint16Array : Float32Array;
     for (const i of CONV_LAYERS) {
       cache[`past_conv.${i}`] = new ort.Tensor(
-        "float16",
-        new Uint16Array(HIDDEN_SIZE * CONV_L_CACHE),
+        dtype,
+        new ConvArr(HIDDEN_SIZE * CONV_L_CACHE),
         [1, HIDDEN_SIZE, CONV_L_CACHE],
       );
     }
     for (const i of ATTENTION_LAYERS) {
       cache[`past_key_values.${i}.key`] = new ort.Tensor(
-        "float16",
-        new Uint16Array(0),
+        dtype,
+        new KvArr(0),
         [1, NUM_KV_HEADS, 0, HEAD_DIM],
       );
       cache[`past_key_values.${i}.value`] = new ort.Tensor(
-        "float16",
-        new Uint16Array(0),
+        dtype,
+        new KvArr(0),
         [1, NUM_KV_HEADS, 0, HEAD_DIM],
       );
     }
