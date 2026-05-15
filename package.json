@@ -12,7 +12,7 @@
     "train": "cd training/leap-finetune && uv run leap-finetune ../config.yaml",
     "train:logs": "modal app logs phi-firewall-finetune",
     "prepare:data": "training/leap-finetune/.venv/bin/python training/prepare_data.py",
-    "export:model": "training/leap-finetune/.venv/bin/python training/export.py"
+    "export:model": "training/leap-finetune/.venv/bin/python training/export.py --lora-path training/output/lora --output-path training/output/merged --export-onnx --push-to-hub --tag v2-50k"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

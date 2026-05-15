@@ -76,6 +76,24 @@ header h1 {
   font-size: 14px;
 }
 
+.mobile-banner {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--text-h);
+}
+
+.mobile-banner strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+}
+
+.mobile-banner p {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 155%;
+}
+
 .container {
   display: flex;
   flex-direction: column;

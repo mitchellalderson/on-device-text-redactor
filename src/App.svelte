@@ -92,7 +92,19 @@
         tokensPerSec = null;
     }
 
+    let isMobile = $state(false);
+
+    function checkMobile(): boolean {
+        const ua = navigator.userAgent;
+        return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(ua);
+    }
+
     $effect(() => {
+        isMobile = checkMobile();
+        if (isMobile) {
+            status = "error";
+            return;
+        }
         initModel();
     });
 </script>
@@ -105,14 +117,21 @@
         </p>
     </header>
 
-    {#if gpuError}
+    {#if isMobile}
+        <div class="error-banner mobile-banner">
+            <strong>Desktop Required</strong>
+            <p>
+                PHI Firewall requires WebGPU and a desktop GPU to run on-device
+                inference. Please open this page on a desktop browser (Chrome
+                113+, Edge 113+, or Safari 26+).
+            </p>
+        </div>
+    {:else if gpuError}
         <div class="error-banner">
             <strong>WebGPU Error:</strong>
             {gpuError}
         </div>
-    {/if}
-
-    {#if status === "loading"}
+    {:else if status === "loading"}
         <div class="loading-overlay">
             <div class="loading-content">
                 <div class="loading-label">{statusMessage || "Initializing..."}</div>
@@ -130,7 +149,7 @@
                 </div>
             </div>
         </div>
-    {:else}
+    {:else if !isMobile}
         <div class="container">
         <div class="model-toggle">
             <button

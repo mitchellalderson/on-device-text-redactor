@@ -19,6 +19,7 @@ const SYSTEM_PROMPT = `Replace all names, SSNs, DOBs, phone numbers, emails, add
 const CHATML_TEMPLATE = `{% for message in messages %}{% if message.role == 'system' %}<|im_start|>system\n{{ message.content }}<|im_end|>\n{% elif message.role == 'user' %}<|im_start|>user\n{{ message.content }}<|im_end|>\n{% elif message.role == 'assistant' %}<|im_start|>assistant\n{{ message.content }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}`;
 
 const MODEL_ID = "aldersondev/phi-firewall-lfm2-350m-onnx";
+const MODEL_REVISION = "v2-50k";
 const MODEL_PATH = "model_fp16.onnx";
 
 export type StatusCallback = (message: string) => void;
@@ -31,14 +32,16 @@ export class TrainedModel {
 
   async init(onStatus?: StatusCallback): Promise<void> {
     onStatus?.("Loading tokenizer...");
-    this.tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
+    this.tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID, {
+      revision: MODEL_REVISION,
+    });
     if (!this.tokenizer.chat_template) {
       this.tokenizer.chat_template = CHATML_TEMPLATE;
     }
     this.eosTokenId = this.tokenizer.eos_token_id;
 
     onStatus?.("Loading model...");
-    const modelUrl = `https://huggingface.co/${MODEL_ID}/resolve/main/${MODEL_PATH}`;
+    const modelUrl = `https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/${MODEL_PATH}`;
     const modelBuffer = await fetchWithCache(modelUrl, (msg) =>
       onStatus?.(msg),
     );
