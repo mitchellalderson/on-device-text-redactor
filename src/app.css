@@ -1,0 +1,358 @@
+:root {
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --text-dim: #6b7280;
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-input: #12141c;
+  --border: #2e303a;
+  --border-focus: #6366f1;
+  --accent: #818cf8;
+  --accent-hover: #6366f1;
+  --accent-bg: rgba(99, 102, 241, 0.1);
+  --error: #f87171;
+  --error-bg: rgba(248, 113, 113, 0.1);
+  --success: #34d399;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  font: 16px/155% var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#app {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+header {
+  text-align: center;
+}
+
+header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.error-banner {
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--error);
+  font-size: 14px;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.model-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  align-self: center;
+}
+
+.toggle-btn {
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toggle-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 160px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: var(--text-h);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 155%;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+textarea:focus {
+  border-color: var(--border-focus);
+}
+
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-small {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.btn-small:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+.btn-small:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.output-section .label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.output-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-height: 120px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 155%;
+  color: var(--text-h);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.output-box.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-bg);
+}
+
+.loading-overlay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 0;
+}
+
+.loading-content {
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+}
+
+.loading-label {
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.2s ease-out;
+}
+
+.progress-fill.indeterminate {
+  width: 30% !important;
+  animation: slide 1.5s ease-in-out infinite;
+}
+
+.progress-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.placeholder {
+  color: var(--text-dim);
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  margin-left: 1px;
+}
+
+.cursor.blink {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.status {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.badge {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+@media (max-width: 640px) {
+  #app {
+    padding: 24px 16px;
+  }
+
+  header h1 {
+    font-size: 24px;
+  }
+
+  textarea {
+    min-height: 120px;
+  }
+}

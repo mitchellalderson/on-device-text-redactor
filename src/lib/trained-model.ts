@@ -1,0 +1,178 @@
+import * as ort from "onnxruntime-web/webgpu";
+import {
+  AutoTokenizer,
+  type PreTrainedTokenizer,
+} from "@huggingface/transformers";
+
+ort.env.wasm.numThreads = 1;
+
+import { fetchWithCache } from "./model-cache";
+
+const TEMPERATURE = 0.1;
+const TOP_K = 50;
+const REPETITION_PENALTY = 1.05;
+const MAX_TOKENS = 1024;
+const MAX_OUTPUT_MULTIPLIER = 2.5;
+
+const SYSTEM_PROMPT = `Replace all names, SSNs, DOBs, phone numbers, emails, addresses, medical record numbers, and IDs with [REDACTED]. Output only the redacted text, nothing else.`;
+
+const CHATML_TEMPLATE = `{% for message in messages %}{% if message.role == 'system' %}<|im_start|>system\n{{ message.content }}<|im_end|>\n{% elif message.role == 'user' %}<|im_start|>user\n{{ message.content }}<|im_end|>\n{% elif message.role == 'assistant' %}<|im_start|>assistant\n{{ message.content }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}`;
+
+const MODEL_ID = "aldersondev/phi-firewall-lfm2-350m-onnx";
+const MODEL_PATH = "model_fp16.onnx";
+
+export type StatusCallback = (message: string) => void;
+export type TokenCallback = (token: string) => void;
+
+export class TrainedModel {
+  private tokenizer: PreTrainedTokenizer | null = null;
+  private session: ort.InferenceSession | null = null;
+  private eosTokenId: number | null = null;
+
+  async init(onStatus?: StatusCallback): Promise<void> {
+    onStatus?.("Loading tokenizer...");
+    this.tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
+    if (!this.tokenizer.chat_template) {
+      this.tokenizer.chat_template = CHATML_TEMPLATE;
+    }
+    this.eosTokenId = this.tokenizer.eos_token_id;
+
+    onStatus?.("Loading model...");
+    const modelUrl = `https://huggingface.co/${MODEL_ID}/resolve/main/${MODEL_PATH}`;
+    const modelBuffer = await fetchWithCache(modelUrl, (msg) =>
+      onStatus?.(msg),
+    );
+
+    onStatus?.("Initializing WebGPU session...");
+    this.session = await ort.InferenceSession.create(modelBuffer, {
+      executionProviders: ["webgpu"],
+    });
+
+    onStatus?.("Ready");
+  }
+
+  async redact(
+    text: string,
+    onToken?: TokenCallback,
+    onStatus?: StatusCallback,
+  ): Promise<string> {
+    if (!this.tokenizer || !this.session || this.eosTokenId === null) {
+      throw new Error("Model not initialized. Call init() first.");
+    }
+
+    onStatus?.("Tokenizing input...");
+
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: text },
+    ];
+    const prompt = this.tokenizer.apply_chat_template(messages, {
+      add_generation_prompt: true,
+      tokenize: false,
+    });
+    const inputIds = this.tokenizer.encode(prompt as string);
+
+    onStatus?.("Generating redacted text...");
+
+    const generatedTokens: number[] = [];
+    const allIds = [...inputIds];
+
+    for (let step = 0; step < MAX_TOKENS; step++) {
+      const inputIdsTensor = new ort.Tensor(
+        "int64",
+        new BigInt64Array(allIds.map(BigInt)),
+        [1, allIds.length],
+      );
+
+      const feeds: Record<string, ort.Tensor> = {
+        input_ids: inputIdsTensor,
+      };
+
+      const outputs = await this.session.run(feeds);
+
+      const logits = outputs.logits;
+      const vocabSize = logits.dims[2];
+      const lastLogits = logits.data.slice(
+        (logits.dims[1] - 1) * vocabSize,
+        logits.dims[1] * vocabSize,
+      );
+      const nextToken = this.sampleToken(
+        lastLogits as ArrayLike<number>,
+        vocabSize,
+        generatedTokens,
+      );
+
+      generatedTokens.push(nextToken);
+
+      const decoded = this.tokenizer.decode([nextToken], {
+        skip_special_tokens: true,
+      });
+      onToken?.(decoded);
+
+      if (nextToken === this.eosTokenId) {
+        if (generatedTokens.length > 5) break;
+        generatedTokens.pop();
+        continue;
+      }
+
+      allIds.push(nextToken);
+
+      const decodedSoFar = this.tokenizer.decode(generatedTokens, {
+        skip_special_tokens: true,
+      });
+      if (
+        generatedTokens.length > 10 &&
+        decodedSoFar.length > text.length * MAX_OUTPUT_MULTIPLIER
+      ) {
+        break;
+      }
+    }
+
+    onStatus?.("Done");
+    return this.tokenizer.decode(generatedTokens, {
+      skip_special_tokens: true,
+    });
+  }
+
+  private sampleToken(
+    logitsData: ArrayLike<number> | ArrayBuffer,
+    vocabSize: number,
+    generatedTokens: number[],
+  ): number {
+    const logits = new Float32Array(logitsData);
+
+    const seen = new Set(generatedTokens);
+    for (const tokenId of seen) {
+      if (logits[tokenId] > 0) {
+        logits[tokenId] /= REPETITION_PENALTY;
+      } else {
+        logits[tokenId] *= REPETITION_PENALTY;
+      }
+    }
+
+    for (let i = 0; i < vocabSize; i++) {
+      logits[i] /= TEMPERATURE;
+    }
+
+    const indexed = Array.from(
+      logits.slice(0, vocabSize),
+      (v, i) => [v, i] as [number, number],
+    );
+    indexed.sort((a, b) => b[0] - a[0]);
+    const topK = indexed.slice(0, TOP_K);
+
+    const maxLogit = topK[0][0];
+    const exps = topK.map(
+      ([v, i]) => [Math.exp(v - maxLogit), i] as [number, number],
+    );
+    const sumExp = exps.reduce((s, [e]) => s + e, 0);
+    const probs = exps.map(([e, i]) => [e / sumExp, i] as [number, number]);
+
+    let r = Math.random();
+    for (const [p, i] of probs) {
+      r -= p;
+      if (r <= 0) return i;
+    }
+    return probs[probs.length - 1][1];
+  }
+}
