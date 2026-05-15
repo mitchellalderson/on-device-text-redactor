@@ -19,10 +19,7 @@ export class PhiFirewall {
     return this._variant;
   }
 
-  async init(
-    variant: ModelVariant,
-    onStatus?: StatusCallback,
-  ): Promise<void> {
+  async init(variant: ModelVariant, onStatus?: StatusCallback): Promise<void> {
     this._variant = variant;
 
     onStatus?.("Checking WebGPU...");
@@ -74,15 +71,21 @@ export class PhiFirewall {
   static async getGpuInfo(): Promise<string> {
     try {
       if (!navigator.gpu) return "CPU (no WebGPU)";
+
       const adapter = await navigator.gpu.requestAdapter();
+
       if (!adapter) return "CPU (no adapter)";
+
       const info = adapter.info || (await adapter.requestAdapterInfo?.());
+
       if (!info) return "GPU";
+
+      const arch = info.architecture || "";
       const vendor = info.vendor || "";
       const device = info.device || "";
-      if (vendor === "apple") return "Apple GPU";
-      if (device) return device;
-      if (vendor) return vendor;
+      if (vendor === "apple") return `Apple GPU (${arch || device || vendor})`;
+      if (device) return `GPU (${device})`;
+      if (vendor) return `GPU (${vendor})`;
       return "GPU";
     } catch {
       return "GPU";
