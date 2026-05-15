@@ -8,14 +8,14 @@ ort.env.wasm.numThreads = 1;
 
 import { fetchWithCache } from "./model-cache";
 
-const TEMPERATURE = 0.6;
+const TEMPERATURE = 0.9;
 const TOP_K = 100;
-const REPETITION_PENALTY = 1.2;
+const REPETITION_PENALTY = 1.6;
 const MAX_TOKENS = 1024;
 const MAX_OUTPUT_MULTIPLIER = 2.5;
 const REPEAT_WINDOW = 3;
 
-const SYSTEM_PROMPT = `Repeat the following text exactly as given. any PII, sensitive information, or personal data should be replaced with [REDACTED].`;
+const SYSTEM_PROMPT = `Repeat the following text exactly as given. Sensitive information, or personal data should be replaced with [REDACTED].`;
 
 const CHATML_TEMPLATE = `{% for message in messages %}{% if message.role == 'system' %}<|im_start|>system\n{{ message.content }}<|im_end|>\n{% elif message.role == 'user' %}<|im_start|>user\n{{ message.content }}<|im_end|>\n{% elif message.role == 'assistant' %}<|im_start|>assistant\n{{ message.content }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}`;
 

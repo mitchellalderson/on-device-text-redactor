@@ -5,7 +5,7 @@
 
     let inputText = $state("");
     let outputText = $state("");
-    let status: AppStatus = $state("idle");
+    let status: AppStatus = $state("idle") as AppStatus;
     let statusMessage = $state("");
     let gpuError = $state("");
     let firewall: PhiFirewall | null = null;
@@ -42,17 +42,33 @@
         location.reload();
     }
 
+    let tokensPerSec = $state<number | null>(null);
+    let tokenCount = 0;
+    let genStartTime = 0;
+    let tpsInterval: ReturnType<typeof setInterval> | null = null;
+
     async function handleRedact() {
         if (!firewall || !inputText.trim() || status === "generating") return;
 
         outputText = "";
         status = "generating";
+        tokenCount = 0;
+        tokensPerSec = null;
+        genStartTime = performance.now();
+
+        tpsInterval = setInterval(() => {
+            const elapsed = (performance.now() - genStartTime) / 1000;
+            if (elapsed > 0 && tokenCount > 0) {
+                tokensPerSec = Math.round((tokenCount / elapsed) * 10) / 10;
+            }
+        }, 200);
 
         try {
             await firewall.redact(
                 inputText,
                 (token) => {
                     outputText += token;
+                    tokenCount++;
                 },
                 (msg) => {
                     statusMessage = msg;
@@ -62,12 +78,18 @@
             outputText = `Error: ${err.message || String(err)}`;
         }
 
+        if (tpsInterval) clearInterval(tpsInterval);
+        const elapsed = (performance.now() - genStartTime) / 1000;
+        if (elapsed > 0 && tokenCount > 0) {
+            tokensPerSec = Math.round((tokenCount / elapsed) * 10) / 10;
+        }
         status = "ready";
     }
 
     function handleClear() {
         inputText = "";
         outputText = "";
+        tokensPerSec = null;
     }
 
     $effect(() => {
@@ -173,7 +195,12 @@
         </div>
 
         <div class="output-section">
-            <span class="label">Redacted Output</span>
+            <div class="section-header">
+                <span class="label">Redacted Output</span>
+                {#if tokensPerSec !== null}
+                    <span class="tps-badge">{tokensPerSec} tok/s</span>
+                {/if}
+            </div>
             <div class="output-box" class:active={status === "generating"}>
                 {#if outputText}
                     {outputText}<span

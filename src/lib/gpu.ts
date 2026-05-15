@@ -1,12 +1,18 @@
-import { TrainedModel } from "./trained-model";
-import { BaseModel } from "./base-model";
-
 export type ModelVariant = "trained" | "base";
 export type StatusCallback = (message: string) => void;
 export type TokenCallback = (token: string) => void;
 
+interface Redactor {
+  init(onStatus?: StatusCallback): Promise<void>;
+  redact(
+    text: string,
+    onToken?: TokenCallback,
+    onStatus?: StatusCallback,
+  ): Promise<string>;
+}
+
 export class PhiFirewall {
-  private impl: TrainedModel | BaseModel | null = null;
+  private impl: Redactor | null = null;
   private _variant: ModelVariant | null = null;
 
   get variant(): ModelVariant | null {
@@ -33,8 +39,10 @@ export class PhiFirewall {
     }
 
     if (variant === "trained") {
+      const { TrainedModel } = await import("./trained-model");
       this.impl = new TrainedModel();
     } else {
+      const { BaseModel } = await import("./base-model");
       this.impl = new BaseModel();
     }
 

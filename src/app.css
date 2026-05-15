@@ -214,13 +214,21 @@ textarea:disabled {
 }
 
 .output-section .label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tps-badge {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--success);
+    background: rgba(52, 211, 153, 0.1);
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    border-radius: 4px;
+    padding: 2px 8px;
 }
 
 .output-box {
