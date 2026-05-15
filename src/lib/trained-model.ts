@@ -19,8 +19,15 @@ const SYSTEM_PROMPT = `Replace all names, SSNs, DOBs, phone numbers, emails, add
 const CHATML_TEMPLATE = `{% for message in messages %}{% if message.role == 'system' %}<|im_start|>system\n{{ message.content }}<|im_end|>\n{% elif message.role == 'user' %}<|im_start|>user\n{{ message.content }}<|im_end|>\n{% elif message.role == 'assistant' %}<|im_start|>assistant\n{{ message.content }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}`;
 
 const MODEL_ID = "aldersondev/phi-firewall-lfm2-350m-onnx";
-const MODEL_REVISION = "v2-50k";
+const MODEL_REVISION = "v2-50k-kv";
 const MODEL_PATH = "model_fp16.onnx";
+
+const HIDDEN_SIZE = 1024;
+const CONV_L_CACHE = 3;
+const NUM_KV_HEADS = 8;
+const HEAD_DIM = 64;
+const CONV_LAYERS = [0, 1, 3, 4, 6, 7, 9, 11, 13, 15];
+const ATTENTION_LAYERS = [2, 5, 8, 10, 12, 14];
 
 export type StatusCallback = (message: string) => void;
 export type TokenCallback = (token: string) => void;
@@ -79,25 +86,51 @@ export class TrainedModel {
 
     const generatedTokens: number[] = [];
     const allIds = [...inputIds];
+    const cache = this.initCache();
 
     for (let step = 0; step < MAX_TOKENS; step++) {
-      const inputIdsTensor = new ort.Tensor(
-        "int64",
-        new BigInt64Array(allIds.map(BigInt)),
-        [1, allIds.length],
-      );
+      const ids =
+        step === 0 ? allIds : [generatedTokens[generatedTokens.length - 1]];
 
       const feeds: Record<string, ort.Tensor> = {
-        input_ids: inputIdsTensor,
+        input_ids: new ort.Tensor("int64", new BigInt64Array(ids.map(BigInt)), [
+          1,
+          ids.length,
+        ]),
+        attention_mask: new ort.Tensor(
+          "int64",
+          new BigInt64Array(allIds.length).fill(1n),
+          [1, allIds.length],
+        ),
+        num_logits_to_keep: new ort.Tensor(
+          "int64",
+          new BigInt64Array([1n]),
+          [],
+        ),
       };
+
+      for (const [key, tensor] of Object.entries(cache)) {
+        feeds[key] = tensor;
+      }
 
       const outputs = await this.session.run(feeds);
 
+      for (const outName of this.session!.outputNames) {
+        if (outName === "logits") continue;
+        const cacheName = outName
+          .replace("present_conv.", "past_conv.")
+          .replace("present_key_values", "past_key_values")
+          .replace(/^present\.(\d+)\./, "past_key_values.$1.");
+        if (cacheName in cache) {
+          cache[cacheName] = outputs[outName];
+        }
+      }
+
       const logits = outputs.logits;
-      const vocabSize = logits.dims[2];
+      const vocabSize = logits.dims[logits.dims.length - 1];
       const lastLogits = logits.data.slice(
-        (logits.dims[1] - 1) * vocabSize,
-        logits.dims[1] * vocabSize,
+        (logits.dims[logits.dims.length - 2] - 1) * vocabSize,
+        logits.dims[logits.dims.length - 2] * vocabSize,
       );
       const nextToken = this.sampleToken(
         lastLogits as ArrayLike<number>,
@@ -135,6 +168,30 @@ export class TrainedModel {
     return this.tokenizer.decode(generatedTokens, {
       skip_special_tokens: true,
     });
+  }
+
+  private initCache(): Record<string, ort.Tensor> {
+    const cache: Record<string, ort.Tensor> = {};
+    for (const i of CONV_LAYERS) {
+      cache[`past_conv.${i}`] = new ort.Tensor(
+        "float16",
+        new Uint16Array(HIDDEN_SIZE * CONV_L_CACHE),
+        [1, HIDDEN_SIZE, CONV_L_CACHE],
+      );
+    }
+    for (const i of ATTENTION_LAYERS) {
+      cache[`past_key_values.${i}.key`] = new ort.Tensor(
+        "float16",
+        new Uint16Array(0),
+        [1, NUM_KV_HEADS, 0, HEAD_DIM],
+      );
+      cache[`past_key_values.${i}.value`] = new ort.Tensor(
+        "float16",
+        new Uint16Array(0),
+        [1, NUM_KV_HEADS, 0, HEAD_DIM],
+      );
+    }
+    return cache;
   }
 
   private sampleToken(

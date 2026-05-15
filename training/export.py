@@ -126,7 +126,7 @@ class KVCacheWrapper(torch.nn.Module):
         input_ids: torch.LongTensor,
         attention_mask: torch.LongTensor,
         position_ids: torch.LongTensor,
-        *past_caches,
+        *flat_caches,
     ) -> tuple:
         from transformers.models.lfm2.modeling_lfm2 import Lfm2HybridConvCache
 
@@ -140,11 +140,20 @@ class KVCacheWrapper(torch.nn.Module):
         pkv.conv_L_cache = self.conv_L_cache
         pkv._dtype = torch.float16
 
+        flat_idx = 0
         for i in range(self.num_layers):
-            idx = i * 3
-            pkv.conv_cache.append(past_caches[idx])
-            pkv.key_cache.append(past_caches[idx + 1])
-            pkv.value_cache.append(past_caches[idx + 2])
+            if self.layer_types[i] == "full_attention":
+                pkv.conv_cache.append(flat_caches[flat_idx])
+                flat_idx += 1
+                pkv.key_cache.append(flat_caches[flat_idx])
+                flat_idx += 1
+                pkv.value_cache.append(flat_caches[flat_idx])
+                flat_idx += 1
+            else:
+                pkv.conv_cache.append(flat_caches[flat_idx])
+                flat_idx += 1
+                pkv.key_cache.append(torch.zeros(1, self.num_kv_heads, 0, self.head_dim, dtype=torch.float16))
+                pkv.value_cache.append(torch.zeros(1, self.num_kv_heads, 0, self.head_dim, dtype=torch.float16))
 
         outputs = self.model(
             input_ids=input_ids,
@@ -157,8 +166,9 @@ class KVCacheWrapper(torch.nn.Module):
         result = [outputs.logits]
         for i in range(self.num_layers):
             result.append(outputs.past_key_values.conv_cache[i])
-            result.append(outputs.past_key_values.key_cache[i])
-            result.append(outputs.past_key_values.value_cache[i])
+            if self.layer_types[i] == "full_attention":
+                result.append(outputs.past_key_values.key_cache[i])
+                result.append(outputs.past_key_values.value_cache[i])
 
         return tuple(result)
 
@@ -267,20 +277,22 @@ def export_onnx_kv_cache(merged_path: Path, onnx_path: Path) -> None:
     input_names = ["input_ids", "attention_mask", "position_ids"]
     dummy_list = [dummy_inputs["input_ids"], dummy_inputs["attention_mask"], dummy_inputs["position_ids"]]
     for i in range(num_layers):
-        conv_name = f"past_conv_{i}"
-        key_name = f"past_key_values.{i}.key"
-        val_name = f"past_key_values.{i}.value"
-        input_names.extend([conv_name, key_name, val_name])
-        dummy_list.extend([
-            torch.zeros(1, hidden_size, conv_L_cache, dtype=torch.float16),
-            torch.zeros(1, num_kv_heads, 0, head_dim, dtype=torch.float16),
-            torch.zeros(1, num_kv_heads, 0, head_dim, dtype=torch.float16),
-        ])
+        if layer_types[i] == "full_attention":
+            input_names.extend([f"past_conv_{i}", f"past_key_{i}", f"past_value_{i}"])
+            dummy_list.extend([
+                torch.zeros(1, hidden_size, conv_L_cache, dtype=torch.float16),
+                torch.zeros(1, num_kv_heads, 1, head_dim, dtype=torch.float16),
+                torch.zeros(1, num_kv_heads, 1, head_dim, dtype=torch.float16),
+            ])
+        else:
+            input_names.append(f"past_conv_{i}")
+            dummy_list.append(torch.zeros(1, hidden_size, conv_L_cache, dtype=torch.float16))
     output_names = ["logits"]
     for i in range(num_layers):
         output_names.append(f"present_conv_{i}")
-        output_names.append(f"present.{i}.key")
-        output_names.append(f"present.{i}.value")
+        if layer_types[i] == "full_attention":
+            output_names.append(f"present.{i}.key")
+            output_names.append(f"present.{i}.value")
 
     dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_len"},
@@ -290,62 +302,53 @@ def export_onnx_kv_cache(merged_path: Path, onnx_path: Path) -> None:
     }
     for i in range(num_layers):
         dynamic_axes[f"past_conv_{i}"] = {0: "batch_size"}
-        dynamic_axes[f"past_key_values.{i}.key"] = {
-            0: "batch_size",
-            2: "past_seq_len",
-        }
-        dynamic_axes[f"past_key_values.{i}.value"] = {
-            0: "batch_size",
-            2: "past_seq_len",
-        }
         dynamic_axes[f"present_conv_{i}"] = {0: "batch_size"}
-        dynamic_axes[f"present.{i}.key"] = {
-            0: "batch_size",
-            2: "total_seq_len",
-        }
-        dynamic_axes[f"present.{i}.value"] = {
-            0: "batch_size",
-            2: "total_seq_len",
-        }
+        if layer_types[i] == "full_attention":
+            dynamic_axes[f"past_key_{i}"] = {0: "batch_size", 2: "past_seq_len"}
+            dynamic_axes[f"past_value_{i}"] = {0: "batch_size", 2: "past_seq_len"}
+            dynamic_axes[f"present.{i}.key"] = {0: "batch_size", 2: "total_seq_len"}
+            dynamic_axes[f"present.{i}.value"] = {0: "batch_size", 2: "total_seq_len"}
 
     input_order = tuple(dummy_list)
 
     print("\nExporting to ONNX (FP16, with KV cache)...")
     print(f"  {len(input_names)} inputs, {len(output_names)} outputs")
 
+    from torch.onnx import register_custom_op_symbolic
+
+    def copy_symbolic(g, self, src, non_blocking=False):
+        return g.op("Identity", src)
+
+    register_custom_op_symbolic("aten::copy", copy_symbolic, 18)
+
+    tmp_path = onnx_path / "model_fp16_tmp.onnx"
     onnx_program = torch.onnx.export(
         wrapper,
         input_order,
+        str(tmp_path),
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
         opset_version=18,
         dynamo=False,
         do_constant_folding=True,
-        external_data=True,
     )
 
-    if onnx_program is not None:
-        tmp_path = onnx_path / "model_fp16_tmp.onnx"
-        onnx_program.save(str(tmp_path))
-        print(f"Exported (with external data) to {tmp_path}")
-
-        print("Inlining external data into standalone file...")
-        onnx_model = onnx.load(str(tmp_path), load_external_data=True)
-        standalone_path = onnx_path / "model_fp16.onnx"
-        onnx.save_model(
-            onnx_model,
-            str(standalone_path),
-            save_as_external_data=False,
-        )
-        print(f"Standalone FP16 ONNX: {standalone_path}")
-        tmp_path.unlink()
-        for ext in [".data", "_data"]:
-            p = onnx_path / f"model_fp16_tmp.onnx{ext}"
-            if p.exists():
-                p.unlink()
-    else:
-        raise RuntimeError("ONNX export returned None")
+    print(f"Traced and saved to {tmp_path}")
+    print("Inlining external data into standalone file...")
+    onnx_model = onnx.load(str(tmp_path), load_external_data=True)
+    standalone_path = onnx_path / "model_fp16.onnx"
+    onnx.save_model(
+        onnx_model,
+        str(standalone_path),
+        save_as_external_data=False,
+    )
+    print(f"Standalone FP16 ONNX: {standalone_path}")
+    tmp_path.unlink()
+    for ext in [".data", "_data"]:
+        p = onnx_path / f"model_fp16_tmp.onnx{ext}"
+        if p.exists():
+            p.unlink()
 
     _print_dir_sizes(onnx_path)
 
