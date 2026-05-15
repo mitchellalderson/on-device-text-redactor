@@ -93,6 +93,7 @@
     }
 
     let isMobile = $state(false);
+    let gpuLabel = $state("Detecting GPU...");
 
     function checkMobile(): boolean {
         const ua = navigator.userAgent;
@@ -102,9 +103,13 @@
     $effect(() => {
         isMobile = checkMobile();
         if (isMobile) {
+            gpuLabel = "Mobile";
             status = "error";
             return;
         }
+        PhiFirewall.getGpuInfo().then((info) => {
+            gpuLabel = info;
+        });
         initModel();
     });
 </script>
@@ -246,6 +251,6 @@
                 Initializing...
             {/if}
         </span>
-        <span class="badge">WebGPU + LFM2.5-350M</span>
+        <span class="badge gpu-pill">{gpuLabel}</span>
     </footer>
 </main>

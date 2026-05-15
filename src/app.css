@@ -369,6 +369,12 @@ footer {
   padding: 3px 8px;
 }
 
+.gpu-pill {
+  color: var(--accent);
+  border-color: rgba(99, 102, 241, 0.3);
+  background: var(--accent-bg);
+}
+
 @media (max-width: 640px) {
   #app {
     padding: 24px 16px;

@@ -70,4 +70,22 @@ export class PhiFirewall {
     }
     return { supported: true, message: "WebGPU available" };
   }
+
+  static async getGpuInfo(): Promise<string> {
+    try {
+      if (!navigator.gpu) return "CPU (no WebGPU)";
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return "CPU (no adapter)";
+      const info = adapter.info || (await adapter.requestAdapterInfo?.());
+      if (!info) return "GPU";
+      const vendor = info.vendor || "";
+      const device = info.device || "";
+      if (vendor === "apple") return "Apple GPU";
+      if (device) return device;
+      if (vendor) return vendor;
+      return "GPU";
+    } catch {
+      return "GPU";
+    }
+  }
 }
