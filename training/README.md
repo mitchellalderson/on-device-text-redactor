@@ -4,6 +4,8 @@ Fine-tune LFM2.5-350M for PHI redaction using LoRA on Modal GPUs.
 
 All commands run from the project root via `npm run`.
 
+The pipeline is configured to avoid accidental writes to the original maintainer's Hugging Face account. Dataset and model uploads are opt-in and require your own Hugging Face repo IDs.
+
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) (for `npm run` commands)
@@ -32,19 +34,33 @@ modal setup
 
 All commands run from the project root:
 
+### Hugging Face Repo IDs
+
+Set your own target repos before pushing datasets or models:
+
+```bash
+export PHI_FIREWALL_HF_DATASET_REPO=your-org/phi-redaction-sft
+export PHI_FIREWALL_HF_MODEL_REPO=your-org/phi-firewall-lfm2-350m-onnx
+```
+
+You can also pass repo IDs directly with `--dataset-repo` and `--repo-id`.
+
 ### Step 1: Prepare the Dataset
 
 ```bash
 npm run prepare:data
 ```
 
-Downloads the [Nvidia Nemotron-PII](https://huggingface.co/datasets/nvidia/Nemotron-PII) dataset, converts to SFT JSONL, and uploads to HuggingFace.
+Downloads the [Nvidia Nemotron-PII](https://huggingface.co/datasets/nvidia/Nemotron-PII) dataset, converts it to SFT JSONL, and saves local train/test files. This does not push to Hugging Face.
 
 Options:
 
 ```bash
-npm run prepare:data -- --sample 50000 --no-push
+npm run prepare:data -- --sample 50000
+npm run prepare:data:push -- --dataset-repo your-org/phi-redaction-sft
 ```
+
+If you push a dataset, update `training/config.yaml` so `dataset.path` points to that repo before training.
 
 ### Step 2: Fine-Tune on Modal
 
@@ -62,7 +78,7 @@ npm run train:logs
 
 Config is in `training/config.yaml`:
 - **Model**: `LFM2.5-350M` (350M instruction-tuned)
-- **Dataset**: `aldersondev/phi-redaction-sft` (from Step 1)
+- **Dataset**: set `dataset.path` to your pushed dataset repo, for example `your-org/phi-redaction-sft`
 - **LoRA**: default rank, targeting attention + MLP projections
 - **Training**: 3 epochs, batch size 8, learning rate 2e-4
 - **GPU**: 1x H100 on Modal
@@ -77,11 +93,14 @@ modal volume get phi-firewall-finetune /outputs/phi-firewall-redaction/<run-name
 ### Step 3: Export to ONNX
 
 ```bash
-# Merge + export + push to Hub
-npm run export:model -- --lora-path training/output/lora --output-path training/output/merged --export-onnx --push-to-hub --tag v2-50k
+# Merge + export locally
+npm run export:model -- --kv-cache
 
-# Skip merge (already merged)
-npm run export:model -- --lora-path training/output/lora --output-path training/output/merged --export-onnx --skip-merge --push-to-hub --tag v2-50k
+# Merge + export + push to your Hub repo
+npm run export:model:push -- --kv-cache --repo-id your-org/phi-firewall-lfm2-350m-onnx --tag v2-50k
+
+# Skip merge (already merged) and push
+npm run export:model:push -- --kv-cache --skip-merge --repo-id your-org/phi-firewall-lfm2-350m-onnx --tag v2-50k
 ```
 
 ### Step 4: Deploy

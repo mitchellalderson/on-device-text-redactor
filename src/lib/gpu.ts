@@ -78,7 +78,12 @@ export class PhiFirewall {
 
       if (!adapter) return "CPU (no adapter)";
 
-      const info = adapter.info || (await adapter.requestAdapterInfo?.());
+      const adapterWithInfo = adapter as GPUAdapter & {
+        info?: GPUAdapterInfo;
+        requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+      };
+      const info =
+        adapterWithInfo.info || (await adapterWithInfo.requestAdapterInfo?.());
 
       if (!info) return "GPU";
 

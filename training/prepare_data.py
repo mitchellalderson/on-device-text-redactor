@@ -1,19 +1,22 @@
 """Convert Nvidia Nemotron-PII dataset to SFT JSONL for leap-finetune.
 
 Downloads from HuggingFace, replaces all PHI spans with [REDACTED],
-formats as SFT messages, samples 50K rows stratified by domain,
-splits 80/20, saves locally and pushes to HuggingFace Hub.
+formats as SFT messages, samples 50K rows stratified by domain, and
+splits 80/20. By default this only saves local JSONL files; HuggingFace
+uploads are opt-in and require an explicit repo ID.
 
 Usage:
     python prepare_data.py
     python prepare_data.py --source nvidia/Nemotron-PII --split train --sample 50000
-    python prepare_data.py --no-push
+    python prepare_data.py --push --dataset-repo your-org/phi-redaction-sft
+    PHI_FIREWALL_HF_DATASET_REPO=your-org/phi-redaction-sft python prepare_data.py --push
     python prepare_data.py --input /path/to/local.parquet
 """
 
 import argparse
 import ast
 import json
+import os
 import random
 from collections import defaultdict
 from pathlib import Path
@@ -31,7 +34,7 @@ SYSTEM_PROMPT = (
 
 HF_SOURCE_DATASET = "nvidia/Nemotron-PII"
 HF_SOURCE_SPLIT = "train"
-HF_DATASET_REPO = "aldersondev/phi-redaction-sft"
+HF_DATASET_REPO_ENV = "PHI_FIREWALL_HF_DATASET_REPO"
 OUTPUT_DIR = Path(__file__).parent / "data"
 SEED = 42
 MAX_TEXT_CHARS = 2000
@@ -172,7 +175,21 @@ def main() -> None:
     parser.add_argument("--sample", type=int, default=50000)
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument(
-        "--no-push", action="store_true", help="Skip HuggingFace upload"
+        "--push", action="store_true", help="Upload the generated dataset to HuggingFace"
+    )
+    parser.add_argument(
+        "--no-push",
+        action="store_true",
+        help="Skip HuggingFace upload (default; retained for compatibility)",
+    )
+    parser.add_argument(
+        "--dataset-repo",
+        type=str,
+        default=os.environ.get(HF_DATASET_REPO_ENV),
+        help=(
+            "HuggingFace dataset repo to push to, for example "
+            f"'your-org/phi-redaction-sft'. Can also be set with {HF_DATASET_REPO_ENV}."
+        ),
     )
     args = parser.parse_args()
 
@@ -228,20 +245,28 @@ def main() -> None:
     save_jsonl(train_clean, OUTPUT_DIR / "train.jsonl")
     save_jsonl(test_clean, OUTPUT_DIR / "test.jsonl")
 
-    if not args.no_push:
+    should_push = args.push and not args.no_push
+    if should_push and not args.dataset_repo:
+        raise SystemExit(
+            "Refusing to push without a HuggingFace dataset repo. "
+            "Pass --dataset-repo your-org/phi-redaction-sft or set "
+            f"{HF_DATASET_REPO_ENV}."
+        )
+
+    if should_push:
         try:
             from datasets import Dataset, DatasetDict
 
-            print(f"\nUploading to HuggingFace Hub as '{HF_DATASET_REPO}'...")
+            print(f"\nUploading to HuggingFace Hub as '{args.dataset_repo}'...")
             ds = DatasetDict(
                 {
                     "train": Dataset.from_list(train_clean),
                     "test": Dataset.from_list(test_clean),
                 }
             )
-            ds.push_to_hub(HF_DATASET_REPO, private=False)
+            ds.push_to_hub(args.dataset_repo, private=False)
             print(
-                f"Done. Dataset at: https://huggingface.co/datasets/{HF_DATASET_REPO}"
+                f"Done. Dataset at: https://huggingface.co/datasets/{args.dataset_repo}"
             )
         except ImportError:
             print("\n'huggingface datasets' not installed. Skipping upload.")
@@ -250,7 +275,7 @@ def main() -> None:
                 f"Then run: python {' '.join([str(args.input)])} --sample {args.sample}"
             )
     else:
-        print("\nSkipping HuggingFace upload (--no-push)")
+        print("\nSkipping HuggingFace upload. Pass --push with --dataset-repo to upload.")
 
     print("\nDone!")
     print(f"  Train: {len(train_clean)} examples -> {OUTPUT_DIR / 'train.jsonl'}")

@@ -6,12 +6,14 @@ reports correctness & speed metrics.
 Usage:
     modal run benchmark.py
     modal run benchmark.py --samples 20
-    modal run benchmark.py --revisions main v2-50k
+    modal run benchmark.py --rev-a main --rev-b v2-50k
+    modal run benchmark.py --repo-id your-org/phi-firewall-lfm2-350m-onnx --rev-a main --rev-b v2-50k
     modal run benchmark.py --output results.json
 """
 
 import argparse
 import json
+import os
 import random
 import re
 import sys
@@ -21,7 +23,8 @@ from pathlib import Path
 
 import modal
 
-HF_REPO = "aldersondev/phi-firewall-lfm2-350m-onnx"
+DEFAULT_HF_REPO = "aldersondev/phi-firewall-lfm2-350m-onnx"
+HF_MODEL_REPO_ENV = "PHI_FIREWALL_HF_MODEL_REPO"
 SYSTEM_PROMPT = "Replace all names, SSNs, DOBs, phone numbers, emails, addresses, medical record numbers, and IDs with [REDACTED]. Output only the redacted text, nothing else."
 
 CHATML_TEMPLATE = "{% for message in messages %}{% if message.role == 'system' %}<|im_start|>system\n{{ message.content }}<|im_end|>\n{% elif message.role == 'user' %}<|im_start|>user\n{{ message.content }}<|im_end|>\n{% elif message.role == 'assistant' %}<|im_start|>assistant\n{{ message.content }}<|im_end|>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
@@ -58,6 +61,7 @@ image = (
 
 @app.function(image=image, gpu="A10G", timeout=4096)
 def benchmark(
+    repo_id: str,
     revisions: list[str],
     samples: int,
     seed: int,
@@ -90,10 +94,10 @@ def benchmark(
         from huggingface_hub import hf_hub_download
 
         tok_path = hf_hub_download(
-            repo_id=HF_REPO, filename="tokenizer.json", revision=rev
+            repo_id=repo_id, filename="tokenizer.json", revision=rev
         )
         config_path = hf_hub_download(
-            repo_id=HF_REPO, filename="tokenizer_config.json", revision=rev
+            repo_id=repo_id, filename="tokenizer_config.json", revision=rev
         )
         tok = PreTrainedTokenizerFast(tokenizer_file=tok_path)
         with open(config_path) as f:
@@ -268,6 +272,7 @@ def benchmark(
         }
 
     print(f"  GPU: A10G (CUDA)")
+    print(f"  Repo: {repo_id}")
     print(f"  Revisions: {revisions[0]} vs {revisions[1]}")
     print(f"  Samples: {samples}  |  Seed: {seed}")
 
@@ -282,7 +287,7 @@ def benchmark(
     print(f"\n  Downloading {rev_a}...")
     tok_a = load_tokenizer(rev_a)
     onnx_a = hf_hub_download(
-        repo_id=HF_REPO, filename="model_fp16.onnx", revision=rev_a
+        repo_id=repo_id, filename="model_fp16.onnx", revision=rev_a
     )
     sess_a = ort.InferenceSession(onnx_a, providers=["CUDAExecutionProvider"])
     print(f"    {rev_a} ready ({sess_a.get_providers()[0]})")
@@ -290,7 +295,7 @@ def benchmark(
     print(f"  Downloading {rev_b}...")
     tok_b = load_tokenizer(rev_b)
     onnx_b = hf_hub_download(
-        repo_id=HF_REPO, filename="model_fp16.onnx", revision=rev_b
+        repo_id=repo_id, filename="model_fp16.onnx", revision=rev_b
     )
     sess_b = ort.InferenceSession(onnx_b, providers=["CUDAExecutionProvider"])
     print(f"    {rev_b} ready ({sess_b.get_providers()[0]})")
@@ -375,6 +380,7 @@ def benchmark(
                     "a": results_a,
                     "b": results_b,
                     "config": {
+                        "repo_id": repo_id,
                         "samples": samples,
                         "seed": seed,
                         "revisions": revisions,
@@ -388,6 +394,7 @@ def benchmark(
 
 @app.local_entrypoint()
 def main(
+    repo_id: str = None,
     rev_a: str = "main",
     rev_b: str = "v2-50k",
     samples: int = 100,
@@ -395,7 +402,9 @@ def main(
     failures: int = 3,
     output: str = None,
 ):
+    repo_id = repo_id or os.environ.get(HF_MODEL_REPO_ENV) or DEFAULT_HF_REPO
     benchmark.remote(
+        repo_id=repo_id,
         revisions=[rev_a, rev_b],
         samples=samples,
         seed=seed,

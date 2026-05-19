@@ -1,4 +1,4 @@
-"""Merge LoRA adapter into base model, export to ONNX, and push to HuggingFace.
+"""Merge LoRA adapter into base model, export to ONNX, and optionally push to HuggingFace.
 
 Custom ONNX export for LFM2 hybrid architecture (conv + attention layers).
 
@@ -16,6 +16,10 @@ Usage:
 
     # Merge + export + push to HF (versioned)
     python export.py --lora-path output/lora-run --output-path output/merged \\
+        --export-onnx --push-to-hub --repo-id your-org/phi-firewall-lfm2-350m-onnx --tag v1-5k
+
+    PHI_FIREWALL_HF_MODEL_REPO=your-org/phi-firewall-lfm2-350m-onnx \\
+        python export.py --lora-path output/lora-run --output-path output/merged \\
         --export-onnx --push-to-hub --tag v1-5k
 
     # Skip merge (already merged)
@@ -36,7 +40,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-HF_MODEL_REPO = "aldersondev/phi-firewall-lfm2-350m-onnx"
+HF_MODEL_REPO_ENV = "PHI_FIREWALL_HF_MODEL_REPO"
 
 
 def find_best_checkpoint(lora_path: Path) -> Path:
@@ -583,11 +587,26 @@ def main() -> None:
     parser.add_argument(
         "--skip-merge", action="store_true", help="Skip merge step (already merged)"
     )
-    parser.add_argument("--repo-id", type=str, default=HF_MODEL_REPO, help="HF repo ID")
+    parser.add_argument(
+        "--repo-id",
+        type=str,
+        default=os.environ.get(HF_MODEL_REPO_ENV),
+        help=(
+            "HuggingFace model repo to push to, for example "
+            f"'your-org/phi-firewall-lfm2-350m-onnx'. Can also be set with {HF_MODEL_REPO_ENV}."
+        ),
+    )
     parser.add_argument(
         "--tag", type=str, default=None, help="Git tag for this version (e.g. v1-5k)"
     )
     args = parser.parse_args()
+
+    if args.push_to_hub and not args.repo_id:
+        raise SystemExit(
+            "Refusing to push without a HuggingFace model repo. "
+            "Pass --repo-id your-org/phi-firewall-lfm2-350m-onnx or set "
+            f"{HF_MODEL_REPO_ENV}."
+        )
 
     if not args.skip_merge:
         best_ckpt = find_best_checkpoint(args.lora_path)

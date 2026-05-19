@@ -161,7 +161,7 @@
                 class="toggle-btn"
                 class:active={selectedVariant === "base"}
                 onclick={() => switchModel("base")}
-                disabled={status === "loading" || status === "generating"}
+                disabled={status === "generating"}
             >
                 Base Model
             </button>
@@ -169,7 +169,7 @@
                 class="toggle-btn"
                 class:active={selectedVariant === "trained"}
                 onclick={() => switchModel("trained")}
-                disabled={status === "loading" || status === "generating"}
+                disabled={status === "generating"}
             >
                 Fine-Tuned
             </button>
@@ -208,9 +208,7 @@
                 onclick={handleRedact}
                 disabled={status !== "ready" || !inputText.trim()}
             >
-                {#if status === "loading"}
-                    Loading Model...
-                {:else if status === "generating"}
+                {#if status === "generating"}
                     Redacting...
                 {:else}
                     Redact PHI

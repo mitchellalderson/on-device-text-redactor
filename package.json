@@ -2,6 +2,27 @@
   "name": "phi-firewall",
   "private": true,
   "version": "0.0.0",
+  "description": "Browser-based PHI redaction demo that runs LFM2 ONNX inference locally with WebGPU.",
+  "author": "Mitchell Alderson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/mitchellalderson/on-device-text-redactor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mitchellalderson/on-device-text-redactor/issues"
+  },
+  "homepage": "https://github.com/mitchellalderson/on-device-text-redactor#readme",
+  "keywords": [
+    "phi",
+    "pii",
+    "redaction",
+    "webgpu",
+    "onnx",
+    "svelte",
+    "huggingface",
+    "modal"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +32,10 @@
     "deploy": "npm run build && modal deploy serve.py",
     "train": "cd training/leap-finetune && uv run leap-finetune ../config.yaml",
     "train:logs": "modal app logs phi-firewall-finetune",
-    "prepare:data": "training/leap-finetune/.venv/bin/python training/prepare_data.py",
-    "export:model": "training/leap-finetune/.venv/bin/python training/export.py --lora-path training/output/lora --output-path training/output/merged --export-onnx --push-to-hub --tag v2-50k",
+    "prepare:data": "training/leap-finetune/.venv/bin/python training/prepare_data.py --no-push",
+    "prepare:data:push": "training/leap-finetune/.venv/bin/python training/prepare_data.py --push",
+    "export:model": "training/leap-finetune/.venv/bin/python training/export.py --lora-path training/output/lora --output-path training/output/merged --export-onnx",
+    "export:model:push": "training/leap-finetune/.venv/bin/python training/export.py --lora-path training/output/lora --output-path training/output/merged --export-onnx --push-to-hub",
     "benchmark": "training/leap-finetune/.venv/bin/modal run benchmark.py"
   },
   "devDependencies": {

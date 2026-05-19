@@ -3,7 +3,9 @@ model_name: "LFM2.5-350M"
 training_type: "sft"
 
 dataset:
-  path: "aldersondev/phi-redaction-sft"
+  # Set this to the dataset repo you pushed with `npm run prepare:data:push`,
+  # for example: "your-org/phi-redaction-sft".
+  path: "your-org/phi-redaction-sft"
   type: "sft"
   test_size: 0.2
 
@@ -20,7 +22,7 @@ peft_config:
 
 modal:
   app_name: "phi-firewall-finetune"
-  gpu: "H100:1"
+  gpu: "L40S:1"
   timeout: 13200
   output_volume: "phi-firewall-finetune"
   output_dir: "/outputs"
